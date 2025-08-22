@@ -41,8 +41,7 @@
     display:grid; grid-template-columns:26px 1.3fr .9fr .8fr 1fr 26px;
     gap:8px; align-items:center; margin:8px 0;
   }
-  .party-row .handle{opacity:.6; text-align:center; font-size:12px; cursor:grab}
-  .party-row.dragging{opacity:.7}
+  .party-row .handle{opacity:.6; text-align:center; font-size:12px}
   .party-row .del{opacity:.8; cursor:pointer; text-align:center}
 
   .legend{display:flex; flex-wrap:wrap; gap:8px}
@@ -82,18 +81,13 @@
   .ard-btn{border:1px solid rgba(255,255,255,.18); background:#0d2547; color:#eaf2ff; padding:8px 12px; border-radius:10px; cursor:pointer; font-weight:700}
   .ard-btn.secondary{background:#0e1a33}
 
-  /* CDU/CSU-Split-Box */
-  .split-box{
-    display:none; margin:8px 0 0; padding:10px; border-radius:12px;
-    background:#0f1420; border:1px solid rgba(255,255,255,.08);
-  }
-  .split-box .row{margin:0 0 8px}
-  .hint{color:#a6b0bf; font-size:12px}
+  /* Dragging-Style */
+  .party-row.dragging{opacity:.6; outline:1px dashed rgba(255,255,255,.25)}
 </style>
 </head>
 <body>
   <h1>Koalitionsrechner – Proportionale Sitzverteilung</h1>
-  <p class="sub">Koalitionen testen, Historik 1949–2025. Prognose-Overlay: ARD-artige Säulen (dick, ohne Gitter, Labels oben) – pro Klick ein Segment. Optional: CDU/CSU im Overlay übereinander.</p>
+  <p class="sub">Koalitionen testen, Historik 1949–2025. Prognose-Overlay: ARD-artige Säulen, pro Klick fährt genau eine Säule hoch (Eingabereihenfolge). Optional: CDU/CSU als gestapelter Ein-Balken-Split.</p>
 
   <div class="wrap">
     <!-- Eingaben -->
@@ -125,34 +119,22 @@
       <div class="muted" style="margin:6px 0 4px">Parteien & Prozentwerte (Name, % und Farbe frei wählbar)</div>
       <div id="partyList"></div>
 
-      <!-- CDU/CSU Split-Option (nur Overlay) -->
-      <div class="split-box" id="splitBox">
-        <div class="row" style="align-items:flex-end">
-          <label style="flex:2; display:flex; gap:8px; align-items:center">
-            <input type="checkbox" id="splitToggle">
-            <strong>CDU/CSU trennen (nur Prognose-Overlay)</strong>
-          </label>
-          <div class="hint" style="flex:3">Sitzverteilung bleibt unverändert zusammengefasst.</div>
-        </div>
-        <div class="row">
-          <div>
-            <label>CDU-Anteil (%)</label>
-            <input type="number" id="cduPart" step="0.1" min="0" value="22.5">
-          </div>
-          <div>
-            <label>CSU-Anteil (%)</label>
-            <input type="number" id="csuPart" step="0.1" min="0" value="6.5">
-          </div>
-          <div>
-            <label>CSU-Farbe (Overlay)</label>
-            <input type="color" id="csuColor" value="#b7b7b7">
-          </div>
-        </div>
-        <div class="hint">Summe wird automatisch auf den aktuellen CDU/CSU-Prozentwert normiert.</div>
+      <hr style="border:none;border-top:1px solid rgba(255,255,255,.08); margin:14px 0">
+
+      <!-- Union-Split-Steuerung (nur Prognose, Sitzverteilung bleibt ungeteilt) -->
+      <h3 style="margin:4px 0 8px">⚙️ Union optional splitten (nur Prognose)</h3>
+      <div class="row">
+        <label style="display:flex; align-items:center; gap:8px;">
+          <input type="checkbox" id="splitUnion">
+          CDU/CSU als ein Balken splitten (CDU unten, CSU oben)
+        </label>
+      </div>
+      <div class="row" id="splitControls" style="display:none">
+        <div><label>CSU-Anteil (in % der Prognose für CDU/CSU)</label><input id="csuShare" type="number" step="0.1" value="6.5"></div>
+        <div><label>CSU-Farbe</label><input id="csuColor" type="color" value="#888888"></div>
       </div>
 
-      <hr style="border:none;border-top:1px solid rgba(255,255,255,.08); margin:14px 0">
-      <h3 style="margin:4px 0 8px">🕰️ Zeitreise – historische Ergebnisse</h3>
+      <h3 style="margin:12px 0 8px">🕰️ Zeitreise – historische Ergebnisse</h3>
       <div class="row">
         <div>
           <label>Historische Presets (1949–2025)</label>
@@ -306,15 +288,15 @@ function addPartyRow(p = {name:"Neue Partei", color:"#8888ff", pct:0, exception:
       <input type="checkbox" class="pExc" ${p.exception?"checked":""}> Ausnahme
     </label>
     <div class="del" title="Entfernen">✕</div>`;
-  row.querySelector(".del").onclick=()=>{ row.remove(); calcAndRender(); maybeShowSplitBox(); };
+  row.querySelector(".del").onclick=()=>{ row.remove(); calcAndRender(); };
   $("#partyList").appendChild(row);
   setupRowDnD(row);
-  row.querySelectorAll("input").forEach(inp=>inp.addEventListener("change", ()=>{ calcAndRender(); maybeShowSplitBox(); }));
+  row.querySelectorAll("input").forEach(inp=>inp.addEventListener("change", calcAndRender));
 }
 function setPartyList(list){ $("#partyList").innerHTML=""; list.forEach(addPartyRow); }
-function setDefaults(){ setPartyList(defaultParties); selectedCoalition = new Set(); calcAndRender(); maybeShowSplitBox(); }
+function setDefaults(){ setPartyList(defaultParties); selectedCoalition = new Set(); calcAndRender(); }
 
-/* ---- Drag & Drop Reordering ---- */
+/* --- Drag & Drop Reordering --- */
 function setupRowDnD(row){
   row.setAttribute('draggable','true');
   row.addEventListener('dragstart', onDragStart);
@@ -329,13 +311,13 @@ function onDragStart(e){
   container.addEventListener('dragover', onDragOver);
   container.addEventListener('drop', onDrop);
 }
-function onDragEnd(e){
-  const row = e.currentTarget;
-  row.classList.remove('dragging');
+function onDragEnd(){
   const container = document.getElementById('partyList');
+  const dragging = container.querySelector('.party-row.dragging');
+  if (dragging) dragging.classList.remove('dragging');
   container.removeEventListener('dragover', onDragOver);
   container.removeEventListener('drop', onDrop);
-  calcAndRender(); maybeShowSplitBox();
+  calcAndRender();
 }
 function onDragOver(e){
   e.preventDefault();
@@ -353,7 +335,7 @@ function getRowAfter(container, mouseY){
   rows.forEach(r=>{
     const box = r.getBoundingClientRect();
     const offset = mouseY - (box.top + box.height/2);
-    if (offset < 0 && offset > closest.offset){ closest = {offset, element:r}; }
+    if (offset < 0 && offset > closest.offset) closest = {offset, element:r};
   });
   return closest.element;
 }
@@ -399,7 +381,7 @@ function computeSeats(parties,seats,threshold,exceptions,method){
   return result;
 }
 
-/* Zeichnen & Layout */
+/* Zeichnen & Layout (Halbkreis) */
 function layoutArcs(data,total,sel){
   const coal = data.filter(p=>p.seats>0 && sel.has(p.name));
   const rest = data.filter(p=>p.seats>0 && !sel.has(p.name));
@@ -499,7 +481,7 @@ function fillHistoryDropdown(){
 }
 function applyHistory(year){
   const hist=getHistData(); const list=hist[year]; if(!list) return;
-  setPartyList(list); selectedCoalition = new Set(); calcAndRender(); maybeShowSplitBox();
+  setPartyList(list); selectedCoalition = new Set(); calcAndRender();
 }
 function parseCSV(text){
   const rows=text.trim().split(/\r?\n/);
@@ -542,46 +524,10 @@ function calcAndRender(){
   recomputeCoalitionSum();
 }
 
-/* CDU/CSU-Split UI Sichtbarkeit + Logik */
-function maybeShowSplitBox(){
-  const names = $$("#partyList .pName").map(i=>i.value.trim());
-  const hasUnion = names.includes("CDU/CSU");
-  const box = $("#splitBox");
-  box.style.display = hasUnion ? "block" : "none";
-  normalizeSplitToUnionValue();
-}
-function getUnionPct(){
-  const rows = $$("#partyList .party-row");
-  for(const r of rows){
-    const n = r.querySelector(".pName").value.trim();
-    if(n==="CDU/CSU"){ return parseFloat(r.querySelector(".pPct").value)||0; }
-  }
-  return 0;
-}
-function normalizeSplitToUnionValue(){
-  const union = getUnionPct();
-  const cdu = parseFloat($("#cduPart").value)||0;
-  const csu = parseFloat($("#csuPart").value)||0;
-  const sum = Math.max(0, cdu+csu);
-  if(sum<=0){ $("#cduPart").value = union; $("#csuPart").value = 0; return; }
-  const f = union / sum;
-  $("#cduPart").value = (cdu*f).toFixed(1);
-  $("#csuPart").value = (csu*f).toFixed(1);
-}
-$("#splitToggle").addEventListener("change", ()=> normalizeSplitToUnionValue());
-$("#cduPart").addEventListener("input", ()=>{
-  const union = getUnionPct(); const cdu = Math.max(0, parseFloat($("#cduPart").value)||0);
-  $("#csuPart").value = Math.max(0, (union - cdu)).toFixed(1);
-});
-$("#csuPart").addEventListener("input", ()=>{
-  const union = getUnionPct(); const csu = Math.max(0, parseFloat($("#csuPart").value)||0);
-  $("#cduPart").value = Math.max(0, (union - csu)).toFixed(1);
-});
-
 /* Events */
-$("#addRowBtn").addEventListener("click", ()=>{ addPartyRow(); calcAndRender(); maybeShowSplitBox(); });
-$("#resetBtn").addEventListener("click", ()=>{ setDefaults(); $("#splitToggle").checked=false; });
-$("#calcBtn").addEventListener("click", ()=>{ calcAndRender(); normalizeSplitToUnionValue(); });
+$("#addRowBtn").addEventListener("click", ()=>{ addPartyRow(); calcAndRender(); });
+$("#resetBtn").addEventListener("click", setDefaults);
+$("#calcBtn").addEventListener("click", calcAndRender);
 $("#totalSeats").addEventListener("change", calcAndRender);
 $("#threshold").addEventListener("change", calcAndRender);
 $("#method").addEventListener("change", calcAndRender);
@@ -608,20 +554,27 @@ $("#loadFileBtn").addEventListener("click", async ()=>{
     if(f.name.endsWith(".json")) list = JSON.parse(txt);
     else list = parseCSV(txt);
   }catch(e){ alert("Datei konnte nicht gelesen werden."); return; }
-  setPartyList(list); selectedCoalition=new Set(); calcAndRender(); maybeShowSplitBox();
+  setPartyList(list); selectedCoalition=new Set(); calcAndRender();
 });
+
+// Union split UI
+$("#splitUnion").addEventListener("change", ()=>{
+  document.getElementById("splitControls").style.display = $("#splitUnion").checked ? "flex" : "none";
+});
+document.getElementById("csuShare").addEventListener("change", ()=>{ /* bleibt rein für Prognose */ });
+document.getElementById("csuColor").addEventListener("change", ()=>{ /* bleibt rein für Prognose */ });
 
 /* Init */
 setDefaults();
 </script>
 
-<!-- ===== ARD-Prognose OVERLAY – pro Klick animiert; optional CDU/CSU gestapelt ===== -->
+<!-- ===== ARD-Prognose OVERLAY – pro Klick animiert (Eingabereihenfolge), Union optional gestapelt ===== -->
 <div id="forecastOverlay" class="ard-overlay">
   <div class="ard-panel">
     <div class="ard-head">
       <div>
         <div class="ard-title">Prognose – ARD-Stil (inoffiziell)</div>
-        <div class="ard-sub">Basis: aktuelle Eingaben. Pro Klick fährt genau ein Segment hoch. Optional: CDU/CSU als Stapel.</div>
+        <div class="ard-sub">Basis: deine aktuellen Eingaben – pro Klick wächst genau eine Säule. Wenn Union gesplittet ist: CDU unten, CSU oben (ein gemeinsamer Balken).</div>
       </div>
       <button class="ard-btn" id="closeForecast">Schließen</button>
     </div>
@@ -634,143 +587,166 @@ setDefaults();
 
     <div class="ard-foot">
       <button class="ard-btn secondary" id="resetBars">⟲ Reset</button>
-      <button class="ard-btn" id="nextBarBtn">Nächstes Segment animieren</button>
+      <button class="ard-btn" id="nextBarBtn">Nächste animieren</button>
     </div>
   </div>
 </div>
 
 <script>
-/* ===== Prognose-Overlay (Chart.js) – Säulen/Segmente wachsen pro Klick ===== */
+/* ===== Prognose-Overlay (Chart.js) – Säulen wachsen pro Klick; Union optional gestapelt ===== */
 let forecastChart = null;
-let stepIndex = 0;            // läuft über Segmente, nicht nur Parteien
-let segments = [];            // Liste der zu animierenden Schritte
-let labelsOrder = [];         // Reihenfolge der Kategorien (wie Eingabe)
-let baseColors = [];          // Farben pro Kategorie (unteres Dataset)
-let overlayColors = [];       // Farben für das obere (nur CSU, sonst transparent)
+let animSteps = [];     // Reihenfolge der animierten Elemente (Dataset/Index/Target)
+let stepPtr    = 0;
 
 const commaDe = x => Number(x||0).toFixed(1).replace(".", ",");
 
 // Öffnen
 document.getElementById("showArdBtn").addEventListener("click", ()=>{
-  buildForecastData();        // Eingabereihenfolge, evtl. mit CSU-Kappe
   openForecast();
 });
 document.getElementById("closeForecast").addEventListener("click", ()=> {
   document.getElementById("forecastOverlay").style.display="none";
 });
 document.getElementById("resetBars").addEventListener("click", resetForecast);
-document.getElementById("nextBarBtn").addEventListener("click", animateNextSegment);
-document.getElementById("forecastChart").addEventListener("click", animateNextSegment);
+document.getElementById("nextBarBtn").addEventListener("click", animateNext);
+document.getElementById("forecastChart").addEventListener("click", animateNext);
 
-// Daten aus aktuellen Eingaben holen – **Eingabereihenfolge**
-function buildForecastData(){
-  const inp = readInputs();
-  const splitOn = $("#splitToggle").checked;
-  const csuHex  = $("#csuColor").value || "#b7b7b7";
-  const cduPct  = parseFloat($("#cduPart").value)||0;
-  const csuPct  = parseFloat($("#csuPart").value)||0;
-
-  // Kategorien in genau der Reihenfolge der Eingabeliste
-  labelsOrder = [];
-  baseColors  = [];
-  overlayColors = [];
-  const baseData = [];        // unterer Stack (alle Parteien, bei Union = CDU-Anteil)
-  const topData  = [];        // oberer Stack (nur CSU an Union-Position; sonst 0)
-
-  inp.parties.forEach(p=>{
-    if(!p || !p.name || isOther(p.name)) return;
-    labelsOrder.push(p.name);
-    if(splitOn && p.name==="CDU/CSU"){
-      baseData.push(Math.max(0, cduPct));
-      topData.push(Math.max(0, csuPct));
-      baseColors.push(p.color);     // CDU nutzt die aktuell eingestellte Unionsfarbe
-      overlayColors.push(csuHex);   // CSU eigene Farbe (Overlay)
-    }else{
-      baseData.push(Math.max(0, p.pct||0));
-      topData.push(0);
-      baseColors.push(p.color);
-      overlayColors.push("transparent");
-    }
-  });
-
-  // Aus baseData/topData generieren wir die Animations-Schritte in Reihenfolge:
-  // für jede Kategorie: zuerst base (falls >0), ggf. danach top (falls >0)
-  segments = [];
-  for(let i=0;i<labelsOrder.length;i++){
-    const b = baseData[i], t = topData[i];
-    if(b>0) segments.push({dataset:0, index:i, target:b});
-    if(t>0) segments.push({dataset:1, index:i, target:t});
-  }
-
-  // Chart (neu) initialisieren
-  initForecastChart(baseData, topData);
-}
-
-// Overlay öffnen
+// Overlay öffnen + Chart initialisieren
 function openForecast(){
   const ov = document.getElementById("forecastOverlay");
   ov.style.display = "flex";
+  initForecastChart();
   resetForecast();
 }
 
-// Chart aufsetzen: dicke Balken, KEINE Ränder, KEINE Grid-Linien, Labels oben draußen, Namen weiß
-function initForecastChart(baseData, topData){
+/* Eingabedaten in Chart-Daten umsetzen
+   - Reihenfolge wie Eingabe
+   - Wenn Union gesplittet: zwei gestapelte Datasets an derselben Label-Position
+*/
+function buildForecastConfig(){
+  const { parties } = readInputs();
+  const split = document.getElementById("splitUnion").checked;
+  const csuShare = Math.max(0, parseFloat(document.getElementById("csuShare").value)||0);
+  const csuColor = document.getElementById("csuColor").value || "#888888";
+
+  const labels = parties.filter(p=>p && p.name && !isOther(p.name)).map(p=>p.name);
+  const baseVals = parties.filter(p=>p && p.name && !isOther(p.name)).map(p=>Math.max(0, p.pct||0));
+  const colors   = parties.filter(p=>p && p.name && !isOther(p.name)).map(p=>p.color||"#999");
+
+  const cduIndex = labels.findIndex(n => norm(n)==="cdu/csu");
+
+  let datasets = [{
+    label: "Prognose",
+    data: baseVals.slice(),
+    backgroundColor: colors.slice(),
+    borderColor: "transparent",
+    borderWidth: 0,
+    borderSkipped: false,
+    barThickness: 68,
+    maxBarThickness: 80,
+    categoryPercentage: 0.66,
+    barPercentage: 0.90,
+    stack: "union"
+  }];
+
+  // Falls gesplittet: CSU aus dem CDU/CSU-Wert herauslösen
+  if (split && cduIndex >= 0){
+    const totalUnion = baseVals[cduIndex] || 0;
+    const csu = Math.min(Math.max(csuShare, 0), totalUnion);
+    const cdu = Math.max(totalUnion - csu, 0);
+    // Unteres Segment (CDU) bleibt in Dataset 0:
+    datasets[0].data[cduIndex] = cdu;
+    // Oberes Segment (CSU) als zweites Dataset:
+    const csuData = new Array(labels.length).fill(0);
+    csuData[cduIndex] = csu;
+    const csuBg = new Array(labels.length).fill("rgba(0,0,0,0)");
+    csuBg[cduIndex] = csuColor;
+    datasets.push({
+      label: "CSU",
+      data: csuData,
+      backgroundColor: csuBg,
+      borderColor: "transparent",
+      borderWidth: 0,
+      borderSkipped: false,
+      barThickness: 68,
+      maxBarThickness: 80,
+      categoryPercentage: 0.66,
+      barPercentage: 0.90,
+      stack: "union"
+    });
+  }
+
+  // Animationsschritte zusammenstellen:
+  animSteps = [];
+  for (let i=0;i<labels.length;i++){
+    if (split && i===cduIndex){
+      // erst CDU (ds 0), dann CSU (ds 1)
+      animSteps.push({ds:0, idx:i, target:datasets[0].data[i]});
+      if (datasets[1]) animSteps.push({ds:1, idx:i, target:datasets[1].data[i]});
+      // Startwerte auf 0 für beide Segmente
+      datasets[0].data[i] = 0;
+      if (datasets[1]) datasets[1].data[i] = 0;
+    } else {
+      animSteps.push({ds:0, idx:i, target:datasets[0].data[i]});
+      datasets[0].data[i] = 0;
+    }
+  }
+
+  return { labels, datasets };
+}
+
+function initForecastChart(){
   const ctx = document.getElementById("forecastChart");
-  if (forecastChart) { forecastChart.destroy(); }
+  if (forecastChart) forecastChart.destroy();
+
+  const cfg = buildForecastConfig();
 
   forecastChart = new Chart(ctx, {
     type: "bar",
     data: {
-      labels: labelsOrder,
-      datasets: [
-        { // Untere Ebene (alle Parteien bzw. CDU bei Union)
-          label: "Prognose",
-          data: baseData.map(()=>0),           // starten bei 0, animieren manuell
-          backgroundColor: baseColors,
-          borderColor: "transparent",
-          borderWidth: 0,
-          borderSkipped: false,
-          barThickness: 72,                    // dicke Balken
-          maxBarThickness: 84,
-          categoryPercentage: 0.66,
-          barPercentage: 0.90,
-          stack: "x"
-        },
-        { // Obere Ebene (nur CSU als Kappe, sonst 0)
-          label: "CSU",
-          data: topData.map(()=>0),
-          backgroundColor: overlayColors,
-          borderColor: "transparent",
-          borderWidth: 0,
-          borderSkipped: false,
-          barThickness: 72,
-          maxBarThickness: 84,
-          categoryPercentage: 0.66,
-          barPercentage: 0.90,
-          stack: "x"
-        }
-      ]
+      labels: cfg.labels,
+      datasets: cfg.datasets
     },
     options: {
       responsive: true,
       maintainAspectRatio: false,
-      animation: false,               // wir animieren manuell
+      animation: false,
       plugins: {
         legend: { display: false },
         datalabels: {
           color: "#ffffff",
-          anchor: "end",              // an der Oberkante
-          align: "end",               // außerhalb oberhalb
-          offset: 8,
-          clip: false,
           font: { weight: "bold", size: 16 },
-          formatter: (value) => value > 0 ? commaDe(value) + " %" : ""
+          formatter: (value) => value > 0 ? commaDe(value) + " %" : "",
+          // Nur bei Union-Segmenten die Zahl INSIDE, sonst außerhalb
+          anchor: (ctx) => {
+            const dsLabel = ctx.dataset.label;
+            if (dsLabel === "CSU") return "center";
+            // bei CDU/CSU (unteres Segment) nur inside, wenn Union gesplittet und genau dieses Label
+            const lbl = forecastChart?.data?.labels?.[ctx.dataIndex] || "";
+            if (dsLabel==="Prognose" && norm(lbl)==="cdu/csu" && forecastChart.data.datasets.length>1) return "center";
+            return "end";
+          },
+          align: (ctx) => {
+            const dsLabel = ctx.dataset.label;
+            const lbl = forecastChart?.data?.labels?.[ctx.dataIndex] || "";
+            if (dsLabel==="CSU") return "center";
+            if (dsLabel==="Prognose" && norm(lbl)==="cdu/csu" && forecastChart.data.datasets.length>1) return "center";
+            return "end";
+          },
+          offset: (ctx) => {
+            const dsLabel = ctx.dataset.label;
+            const lbl = forecastChart?.data?.labels?.[ctx.dataIndex] || "";
+            if (dsLabel==="CSU") return 0;
+            if (dsLabel==="Prognose" && norm(lbl)==="cdu/csu" && forecastChart.data.datasets.length>1) return 0;
+            return 8;
+          },
+          clip: false
         }
       },
       scales: {
         x: {
           stacked: true,
-          grid: { display: false },          // KEINE Linien
+          grid: { display: false },
           ticks: { color: "#ffffff", font: { weight: "bold", size: 14 } }
         },
         y: {
@@ -779,62 +755,49 @@ function initForecastChart(baseData, topData){
           suggestedMax: Math.max(
             30,
             Math.ceil(
-              Math.max(
-                ...labelsOrder.map((_,i)=> (forecastChart ? 0 : 0)) // placeholder, ersetzt unten beim Reset
+              (forecastChart?.data?.datasets || cfg.datasets)
+                .reduce((m, ds, i) => Math.max(m, Math.max(...ds.data)), 0
               ) + 5
             )
           ),
-          grid: { display: false },          // KEINE Linien
+          grid: { display: false },
           ticks: { color:"#ffffff", font:{ size: 12 }, callback: v => v + "%" }
         }
       }
     },
     plugins: [ChartDataLabels]
   });
-
-  // suggestedMax sauber setzen: basierend auf Zielwerten
-  const targetsMax = Math.max(30, Math.ceil(calcMaxTotal(baseData, topData) + 5));
-  forecastChart.options.scales.y.suggestedMax = targetsMax;
 }
 
-// Hilfsfunktion: maximaler gestapelter Wert
-function calcMaxTotal(baseData, topData){
-  let m = 0;
-  for(let i=0;i<baseData.length;i++){
-    m = Math.max(m, (baseData[i]||0) + (topData[i]||0));
-  }
-  return m;
-}
-
-// Reset: alle Segmente auf 0
 function resetForecast(){
-  stepIndex = 0;
-  forecastChart.data.datasets.forEach(ds => ds.data = ds.data.map(()=>0));
+  stepPtr = 0;
+  if (!forecastChart) return;
+  // Alle Daten bereits im init auf 0 gesetzt – nur sicherheitshalber nochmal:
+  forecastChart.data.datasets.forEach(ds=>{
+    for(let i=0;i<ds.data.length;i++) ds.data[i]=0;
+  });
   forecastChart.update();
 }
 
-// Pro Klick fährt das **nächste Segment** hoch
-function animateNextSegment(){
+function animateNext(){
   if (!forecastChart) return;
-  if (stepIndex >= segments.length) return;
+  if (stepPtr >= animSteps.length) return;
+  const {ds, idx, target} = animSteps[stepPtr];
 
-  const seg = segments[stepIndex];
-  const {dataset, index, target} = seg;
-
-  let step = 0;
-  const steps = 30;        // 30 Frames
+  let t = 0;
+  const steps = 30;
   const timer = setInterval(()=>{
-    step++;
-    const cur = target * (step/steps);
-    forecastChart.data.datasets[dataset].data[index] = cur;
+    t++;
+    const val = target * (t/steps);
+    forecastChart.data.datasets[ds].data[idx] = val;
     forecastChart.update();
-    if (step >= steps){
-      forecastChart.data.datasets[dataset].data[index] = target;
-      forecastChart.update();
+    if (t>=steps){
       clearInterval(timer);
-      stepIndex++;
+      forecastChart.data.datasets[ds].data[idx] = target;
+      forecastChart.update();
+      stepPtr++;
     }
-  }, 40); // 40ms → ~1.2s pro Segment
+  }, 40);
 }
 </script>
 
